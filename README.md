@@ -12,7 +12,7 @@ associated code within the XTB program (https://github.com/grimme-lab/xtb).
 This has been modified to allow for the changes proposed in the pGFN-FF method by 
 Gale, LeBlanc, Spackman, Silvestri and Raiteri, J. Chem. Theory Comput., 17, 7827 (2021).
 
-The code provide contains the routines to create the library and an example main program
+The code provided contains the routines to create the library and an example main program
 that calls the library to generate the relevant parameters. 
 
 License:
