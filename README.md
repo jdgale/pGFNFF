@@ -1,7 +1,4 @@
-# pGFN-FF library
-
-pGFN-FF Library
-===============
+# pGFN-FF Library
 
 This code contains a set of routines that build a library that is useful for generating
 the parameters required to run a GFN-FF calculation or the periodic equivalent, pGFN-FF.
