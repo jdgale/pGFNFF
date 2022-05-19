@@ -1,0 +1,218 @@
+
+Usage:
+======
+
+If using the code it is recommended to read the relevant papers first:
+- Spicher and Grimme, Angewandte Chemie Intl. Ed., 131, 11195 (2020)
+- Gale, LeBlanc, Spackman, Silvestri and Raiteri, J. Chem. Theory Comput., 17, 7827 (2021)
+
+The library is set up so that it can be called from a code in several stages:
+
+1) Passing of control parameters 
+--------------------------------
+
+  Three subroutines can be called to pass real(r), integer(i) or logical(l) values.
+  The call consists of a string that identifies the quantity to be passed, followed
+  by the value of the parameter and an integer error flag which should be zero on
+  return if execution is successful.
+
+  Examples of calls are given below:
+
+  call pgfnff_init_param_r('tdist_thr',tdist_thr,ierror)
+  call pgfnff_init_param_i('maxtoposhell1',maxtoposhell1,ierror)
+  call pgfnff_init_param_l('newtopo',lnewtopo,ierror)
+
+  All parameters have a default value and so calls only need to be made where the
+  default value is to be changed.
+
+2) Initialisation of library
+----------------------------
+
+  A single initial call to initialise the library must be made after the above 
+  parameters have been set (if required):
+
+  call pgfnff_init
+
+  The initial control parameters can then be output by calling the following routine:
+
+  call pgfnff_outpar(ioout,ndim)
+
+  where ioout is the channel number for output (e.g. ioout = 6) and the number of periodic
+  dimensions (i.e. ndim must be between 0 and 3)
+
+3) Set up details of the system for which parameters are to be generated
+------------------------------------------------------------------------
+
+  numat          (integer) = number of atoms in the system
+  ndim           (integer) = number of periodic dimensions (0,1,2,3)
+  nat(numat)     (integer) = array of atomic numbers for atoms
+  nftype(numat)  (integer) = array of atomic type numbers for atoms (usually 0, can be > 0 and < 1000 as a label)
+  nnobo          (integer) = number of bond exclusion pairs
+  nobond(nnobo)  (integer) = index to pair of atomic numbers for elements that should not be bonded
+                             = 1000*inat1 + inat2, where inat1 and inat2 are the atomic numbers
+  nobotyp(nnobo) (integer) = index to pair of atomic type numbers for elements that should not be bonded
+                             = 1000*ityp1 + ityp2, where ityp1 and ityp2 are the atomic type numbers (usually 0)
+  rv(3,3)        (real)    = Cartesian lattice vectors in Angstroms for periodic systems
+  kv(3,3)        (real)    = Cartesian reciprocal space lattice vectors in 1/Angstroms for periodic systems (inc. 2*pi)
+  x(numat)       (real)    = array of Cartesian coordinates in the x direction for atoms in Angstroms
+  y(numat)       (real)    = array of Cartesian coordinates in the y direction for atoms in Angstroms
+  z(numat)       (real)    = array of Cartesian coordinates in the z direction for atoms in Angstroms
+
+4) Find maximum cutoff for the neighbour list
+---------------------------------------------
+
+  Pass the number of atoms and the array of atomic numbers:
+
+  call pgfnff_get_max_cutoff(numat,nat,cut2_nbr)
+
+  On return cut2_nbr is the cutoff squared for the neighbour list (in Angstrom**2)
+
+5) Build the neighbour list
+---------------------------
+
+  Pass the full details of the system to a routine that generates the neighbour list:
+
+  call getnbr(ndim,rv,kv,numat,nat,x,y,z,cut2_nbr,ldebug)
+
+  If ldebug is set to be true then debugging output will be written.
+  Once the initial neighbour list is generated then check whether there are any atoms without bonds:
+
+  call pgfnff_check_atom_with_nobonds(numat,nat,nnbr,lbondsok)
+
+  If the bonds are not OK (lbondsok = .false.) then try doubling the cutoff squared and recompute
+  the neighbour list:
+
+  if (.not.lbondsok) then
+    cut2_nbr = 2.0_dp*cut2_nbr
+    call getnbr(ndim,rv,kv,numat,nat,x,y,z,cut2_nbr,ldebug)
+  endif
+
+  Details of the neighbour list are contained in the following variables:
+
+  maxnbr                (integer) = maximum number of neighbours per atom
+  nnbr(numat)           (integer) = number of neighbours for each atom
+  nbrno(maxnbr,numat)   (integer) = pointer to neighbours for each atom 
+  ncnbr(maxnbr,numat)   (integer) = pointer to cell of neighbours for each atom 
+  rnbr(maxnbr,numat)    (real)    = distance to neighbours for each atom in Angstrom
+  xnbr(maxnbr,numat)    (real)    = x Cartesian coordinate of vectors to neighbours for each atom in Angstrom
+  ynbr(maxnbr,numat)    (real)    = y Cartesian coordinate of vectors to neighbours for each atom in Angstrom
+  znbr(maxnbr,numat)    (real)    = z Cartesian coordinate of vectors to neighbours for each atom in Angstrom
+
+  The variables nnbr_bond, nbrno_bond, ncnbr_bond, rbnbr, xbnbr, ybnbr, zbnbr are the corresponding 
+  quantities in a second neighbour list for bonds.
+
+6) Generate the (p)GFN-FF parameters for the system
+---------------------------------------------------
+
+  call pgfnff_pargen(ndim,kv,numat,nat,nftype,x,y,z,q,nfrag,nfraglist,qfrag, &
+                     nnobo,nobond,nobotyp,maxnbr,nnbr,nbrno,ncnbr,rnbr,xnbr,ynbr,znbr, &
+                     nnbr_bond,nbrno_bond,ncnbr_bond,rbnbr,xbnbr,ybnbr,zbnbr,lverbose)
+
+  On return the following variables are set (in addition to the bonding neighbour list, as above):
+
+  nfrag                 (integer) = number of fragments
+  nfraglist(numat)      (integer) = pointer from atom to fragment number
+  q(numat)              (real)    = charges on atoms
+  qfrag(nfrag)          (real)    = charges on fragments
+
+7) Query the library to obtain the parameters
+---------------------------------------------
+
+  At this stage the parameters should have been successfully generated within the library
+  and can now be obtained by calls to query each group of parameters:
+
+  Coordination number parameters:
+
+  call pgfnff_get_cnpar(cn_kn,hb_kn,gfnff_cnmax)
+ 
+  Find the maximum element number supported by the library:
+ 
+  call pgfnff_get_maxele(maxele)
+
+  Covalent radii of elements:
+
+  call pgfnff_get_covalent_radii(gfnff_rcov)
+ 
+  General radii of elements:
+ 
+  call pgfnff_get_general_radii(gfnff_rad)
+ 
+  Get parameters that control the variation of radii with coordination number:
+ 
+  call pgfnff_get_cn_radii(maxele,gfnff_rad_cn)
+ 
+  Charge equilibration parameters:
+ 
+  call pgfnff_get_eeq(numat,gfnff_alp,gfnff_chi,gfnff_gam,gfnff_cnf)
+ 
+  Repulsion parameters:
+ 
+  call pgfnff_get_repulsion_scale(gfnff_repscale_b,gfnff_repscale_n,gfnff_repscale_13,gfnff_repscale_14)
+  call pgfnff_get_repulsion_threshold(gfnff_repthr)
+  call pgfnff_get_repulsion(numat,maxelein,gfnff_repulsion_a,gfnff_repulsion_z,gfnff_repulsion_p)
+ 
+  Find the maximum ref value for dispersion in the library:
+ 
+  call pgfnff_get_maxref(maxref)
+ 
+  Dispersion parameters:
+ 
+  call pgfnff_get_dispersion_threshold(gfnff_dispthr)
+  call pgfnff_get_dispersion(numat,nat,maxelein,maxref,disp_nref,disp_cn,disp_c6,disp_c9, &
+                             disp_zeta,disp_r0,disp_sqrtZr4r2)
+ 
+  Bond parameters:
+
+  call pgfnff_get_bond_parameters(numat,maxnbr,nnbr_bond,par_bond)
+  call pgfnff_get_bond_scale(gfnff_bondscale)
+
+  Angle bend parameters:
+
+  call pgfnff_get_number_of_angles(nangles)
+  call pgfnff_get_angles(nangles,nangleatomptr,par_angle,gfnff_angle_damp)
+
+  Torsional parameters:
+
+  call pgfnff_get_number_of_torsions(ntorsions)
+  call pgfnff_get_torsions(ntorsions,ntorsionatomptr,par_torsion,gfnff_torsion_damp)
+
+  Hydrogen bond thresholds:
+
+  call pgfnff_get_hydrogen_bond_thresholds(gfnff_hbthr1,gfnff_hbthr2)
+
+  Hydrogen bond cutoffs:
+
+  call pgfnff_get_hydrogen_bond_cutoffs(gfnff_hb_a_cut,gfnff_hb_long_cut,gfnff_hb_nb_cut, &
+                                        gfnff_hb_s_cut,gfnff_hb_alp)
+
+  Halogen bond cutoffs:
+
+  call pgfnff_get_halogen_bond_cutoffs(gfnff_xb_a_cut,gfnff_xb_s_cut,gfnff_xb_l_cut)
+
+  Hydrogen bonding potential AB atoms:
+
+  call pgfnff_get_number_hydrogen_bond_AB(nABatoms)
+  call pgfnff_get_hydrogen_bond_AB(numat,nABatoms,nABatomptr,gfnff_ABhbq,gfnff_hb_acid,gfnff_hb_base)
+
+  Hydrogen bonding potential H atoms:
+
+  call pgfnff_get_number_hydrogen_bond_H(nHatoms)
+  call pgfnff_get_hydrogen_bond_H(numat,nHatoms,nHatomptr,nHatomrptr)
+
+  Hydrogen bond scale factors
+
+  call pgfnff_get_hydrogen_bond_scale(gfnff_hb_scale_gen,gfnff_hb_scale_coh)
+
+  Hydrogen bond parameters
+
+  call pgfnff_get_hydrogen_bond_parameters(gfnff_bend_hb,gfnff_tors_hb,gfnff_hbabmix)
+
+  Halogen bonding potential AB atoms
+
+  call pgfnff_get_number_halogen_bond_AB(nxbABatoms)
+  call pgfnff_get_halogen_bond_AB(numat,nxbABatoms,nxbABatomptr,gfnff_ABxbq)
+
+  Halogen bond scale factors
+
+  allocate(gfnff_xb_scale(maxele))
+
